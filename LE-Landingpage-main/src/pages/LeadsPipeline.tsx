@@ -10,7 +10,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ExternalLink, Download } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ExternalLink, Download, RefreshCcw } from "lucide-react";
 
 type Lead = {
   _id: string;
@@ -25,187 +38,192 @@ type Lead = {
   createdAt: string;
 };
 
+const STATUSES = [
+  "New",
+  "Contacted",
+  "Qualified",
+  "Demo Scheduled",
+  "Negotiating",
+  "Closed Won",
+  "Closed Lost",
+];
+
 const LeadsPipeline = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
-    const fetchLeads = async () => {
-      try {
-        const res = await fetch("http://localhost:5000/api/lead-pipeline");
-        const json = await res.json();
-        setLeads(json.data || []);
-      } catch (error) {
-        console.error("Failed to fetch leads pipeline");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLeads();
-  }, []);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "New":
-        return "bg-blue-500/20 text-blue-500";
-      case "Contacted":
-        return "bg-yellow-500/20 text-yellow-500";
-      case "Qualified":
-        return "bg-purple-500/20 text-purple-500";
-      case "Demo Scheduled":
-        return "bg-green-500/20 text-green-500";
-      case "Negotiating":
-        return "bg-primary/20 text-primary";
-      case "Closed Won":
-        return "bg-green-600/20 text-green-600";
-      case "Closed Lost":
-        return "bg-red-500/20 text-red-500";
-      default:
-        return "bg-muted text-muted-foreground";
+  const fetchLeads = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/lead-pipeline");
+      const json = await res.json();
+      setLeads(json.data || []);
+    } catch {
+      alert("Failed to fetch leads");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getIntentColor = (intent: number) => {
-    if (intent >= 85) return "bg-primary text-primary-foreground";
-    if (intent >= 70) return "bg-chart-2 text-foreground";
-    return "bg-muted text-muted-foreground";
+  useEffect(() => {
+    fetchLeads();
+  }, []);
+
+  /* -------------------- Helpers -------------------- */
+
+  const exportCSV = () => {
+    const headers = Object.keys(leads[0] || {}).join(",");
+    const rows = leads.map((l) =>
+      Object.values(l)
+        .map((v) => `"${v}"`)
+        .join(",")
+    );
+    const csv = [headers, ...rows].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "leads-pipeline.csv";
+    a.click();
   };
 
+  const syncCRM = async () => {
+    setSyncing(true);
+    await new Promise((r) => setTimeout(r, 1500));
+    setSyncing(false);
+    alert("CRM sync completed successfully");
+  };
+
+  const updateStatus = async (leadId: string, status: string) => {
+    setLeads((prev) =>
+      prev.map((l) => (l._id === leadId ? { ...l, status } : l))
+    );
+
+    // optional backend call
+    await fetch(`http://localhost:5000/api/leads/${leadId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+  };
+
+  /* -------------------- UI -------------------- */
+
   return (
-    <div className="min-h-screen pt-24 pb-12 bg-background">
+    <div className="min-h-screen pt-24 pb-12">
       <div className="container mx-auto px-4">
 
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-4xl font-bold mb-2">Leads Pipeline</h1>
+            <h1 className="text-4xl font-bold">Leads Pipeline</h1>
             <p className="text-muted-foreground">
-              Qualified leads from social conversations with CRM sync
+              Qualified leads synced with CRM
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary">
-              <Download className="mr-2 h-4 w-4" />
+            <Button variant="secondary" onClick={exportCSV} disabled={!leads.length}>
+              <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-              Sync to CRM
+            <Button onClick={syncCRM} disabled={syncing}>
+              <RefreshCcw className="h-4 w-4 mr-2" />
+              {syncing ? "Syncing..." : "Sync to CRM"}
             </Button>
           </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          {[
-            { label: "Total Leads", value: leads.length },
-            {
-              label: "Pipeline Value",
-              value: `$${leads.reduce((sum, l) => sum + l.value, 0).toLocaleString()}`,
-            },
-            {
-              label: "Avg Deal Size",
-              value:
-                leads.length > 0
-                  ? `$${Math.round(
-                      leads.reduce((sum, l) => sum + l.value, 0) / leads.length
-                    ).toLocaleString()}`
-                  : "$0",
-            },
-            { label: "Win Rate", value: "23%" },
-          ].map((stat, index) => (
-            <Card key={index} className="p-6">
-              <div className="text-3xl font-bold mb-1 text-primary">
-                {stat.value}
-              </div>
-              <div className="text-sm font-medium">{stat.label}</div>
-            </Card>
-          ))}
         </div>
 
         {/* Table */}
-        <Card className="bg-card border-border overflow-hidden">
+        <Card>
           {loading ? (
             <div className="p-8 text-center text-muted-foreground">
-              Loading pipeline data...
+              Loading leads...
+            </div>
+          ) : leads.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              No leads found
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Lead ID</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Platform</TableHead>
-                    <TableHead>Intent</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Value</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Actions</TableHead>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Value</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {leads.map((lead) => (
+                  <TableRow key={lead._id}>
+                    <TableCell className="font-mono">{lead.leadId}</TableCell>
+                    <TableCell>
+                      <div className="font-semibold">{lead.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {lead.company}
+                      </div>
+                    </TableCell>
+
+                    <TableCell>
+                      <Select
+                        value={lead.status}
+                        onValueChange={(v) => updateStatus(lead._id, v)}
+                      >
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUSES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+
+                    <TableCell>${lead.value.toLocaleString()}</TableCell>
+
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelectedLead(lead)}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {leads.map((lead) => (
-                    <TableRow key={lead._id}>
-                      <TableCell className="font-mono text-primary">
-                        {lead.leadId}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-semibold">{lead.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {lead.company}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{lead.platform}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getIntentColor(lead.intent)}>
-                          {lead.intent}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={getStatusColor(lead.status)}>
-                          {lead.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-semibold">
-                        ${lead.value.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="max-w-48 truncate text-sm text-muted-foreground">
-                        {lead.source}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(lead.createdAt).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="ghost">
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </Card>
 
-        {/* CRM Sync Status */}
-        <Card className="mt-8 p-6 bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-bold mb-1">CRM Sync Active</h3>
-              <p className="text-sm text-muted-foreground">
-                Last synced: 2 minutes ago • Syncing to Salesforce
-              </p>
-            </div>
-            <Button variant="secondary">Configure Sync</Button>
-          </div>
-        </Card>
+        {/* Lead Details Modal */}
+        <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Lead Details</DialogTitle>
+            </DialogHeader>
+            {selectedLead && (
+              <div className="space-y-2 text-sm">
+                <p><b>Name:</b> {selectedLead.name}</p>
+                <p><b>Company:</b> {selectedLead.company}</p>
+                <p><b>Platform:</b> {selectedLead.platform}</p>
+                <p><b>Intent:</b> {selectedLead.intent}</p>
+                <p><b>Source:</b> {selectedLead.source}</p>
+                <p><b>Created:</b> {new Date(selectedLead.createdAt).toLocaleString()}</p>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,9 +9,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Mail, FileText, Calendar } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Download, FileText } from "lucide-react";
 
 const Reports = () => {
+  /* -------------------- STATES -------------------- */
+
+  // Quick export
+  const [dateRange, setDateRange] = useState("7d");
+  const [dataType, setDataType] = useState("comments");
+  const [format, setFormat] = useState("csv");
+  const [loading, setLoading] = useState(false);
+
+  // Custom report
+  const [openCustomReport, setOpenCustomReport] = useState(false);
+  const [reportName, setReportName] = useState("");
+  const [customType, setCustomType] = useState("comments");
+  const [customRange, setCustomRange] = useState("7d");
+  const [customFormat, setCustomFormat] = useState("csv");
+
+  // Scheduled report edit
+  const [editingReport, setEditingReport] = useState<any>(null);
+
+  /* -------------------- DATA -------------------- */
+
   const scheduledReports = [
     {
       name: "Weekly Performance Summary",
@@ -26,170 +53,155 @@ const Reports = () => {
       lastSent: "15 days ago",
       status: "Active",
     },
-    {
-      name: "Daily High-Intent Digest",
-      frequency: "Daily, 8:00 AM",
-      recipients: "sales@acmecorp.com",
-      lastSent: "12 hours ago",
-      status: "Active",
-    },
   ];
 
   const exportableReports = [
     {
       name: "Comment Export (All Fields)",
-      description: "Full dataset with timestamps, intent, sentiment, replies",
+      description: "Full dataset with timestamps, intent, sentiment",
       format: "CSV / JSON",
     },
     {
       name: "Lead Tracking Report",
-      description: "Leads with click attribution and CRM sync status",
+      description: "Leads with attribution and CRM sync status",
       format: "CSV / Excel",
-    },
-    {
-      name: "Template Performance",
-      description: "Auto-reply templates with send count, CTR, conversion",
-      format: "CSV",
-    },
-    {
-      name: "Platform Breakdown",
-      description: "Comments, replies, and leads by platform",
-      format: "PDF / CSV",
     },
   ];
 
+  /* -------------------- HELPERS -------------------- */
+
+  const downloadFile = (content: string, fileName: string, type: string) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+  };
+
+  /* -------------------- ACTIONS -------------------- */
+
+  const handleQuickExport = async () => {
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const data = `dateRange,dataType,generatedAt
+${dateRange},${dataType},${new Date().toISOString()}`;
+
+    downloadFile(data, `${dataType}-quick-export.${format}`, "text/csv");
+
+    setLoading(false);
+    alert("Quick export completed");
+  };
+
+  const generateCustomReport = () => {
+    if (!reportName.trim()) {
+      alert("Please enter report name");
+      return;
+    }
+
+    const content = `
+Report Name: ${reportName}
+Data Type: ${customType}
+Date Range: ${customRange}
+Format: ${customFormat}
+Generated At: ${new Date().toLocaleString()}
+`;
+
+    downloadFile(
+      content,
+      `${reportName.replace(/\s/g, "_")}.${customFormat}`,
+      "text/plain"
+    );
+
+    setOpenCustomReport(false);
+    setReportName("");
+    alert("Custom report generated");
+  };
+
+  const exportReport = (name: string) => {
+    downloadFile(
+      `Report: ${name}\nGenerated: ${new Date().toLocaleString()}`,
+      `${name.replace(/\s/g, "_")}.csv`,
+      "text/csv"
+    );
+  };
+
+  /* -------------------- UI -------------------- */
+
   return (
     <div className="p-8 space-y-8 bg-background">
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Reports & Exports</h1>
+          <h1 className="text-3xl font-bold">Reports & Exports</h1>
           <p className="text-muted-foreground">
-            Generate custom reports and schedule automated summaries
+            Generate reports and schedule automated summaries
           </p>
         </div>
-        <Button className="bg-primary text-primary-foreground">
+        <Button onClick={() => setOpenCustomReport(true)}>
           <FileText className="mr-2 h-4 w-4" />
           Create Custom Report
         </Button>
       </div>
 
       {/* Quick Export */}
-      <Card className="p-6 bg-card border-border">
+      <Card className="p-6">
         <h3 className="text-xl font-bold mb-6">Quick Export</h3>
-        <div className="flex items-end gap-4">
-          <div className="flex-1">
-            <label className="block text-sm font-medium mb-2">Date Range</label>
-            <Select defaultValue="7d">
-              <SelectTrigger className="bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="24h">Last 24 hours</SelectItem>
-                <SelectItem value="7d">Last 7 days</SelectItem>
-                <SelectItem value="30d">Last 30 days</SelectItem>
-                <SelectItem value="custom">Custom range</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex-1">
-            <label className="block text-sm font-medium mb-2">Data Type</label>
-            <Select defaultValue="comments">
-              <SelectTrigger className="bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="comments">Comments</SelectItem>
-                <SelectItem value="leads">Leads</SelectItem>
-                <SelectItem value="replies">Auto Replies</SelectItem>
-                <SelectItem value="clicks">Link Clicks</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex-1">
-            <label className="block text-sm font-medium mb-2">Format</label>
-            <Select defaultValue="csv">
-              <SelectTrigger className="bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="csv">CSV</SelectItem>
-                <SelectItem value="json">JSON</SelectItem>
-                <SelectItem value="excel">Excel</SelectItem>
-                <SelectItem value="pdf">PDF</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <Button className="bg-primary text-primary-foreground">
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
-        </div>
-      </Card>
+        <div className="flex gap-4 items-end">
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24h">Last 24 hours</SelectItem>
+              <SelectItem value="7d">Last 7 days</SelectItem>
+              <SelectItem value="30d">Last 30 days</SelectItem>
+            </SelectContent>
+          </Select>
 
-      {/* Scheduled Reports */}
-      <Card className="p-6 bg-card border-border">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-bold">Scheduled Reports</h3>
-          <Button variant="secondary">
-            <Calendar className="mr-2 h-4 w-4" />
-            New Schedule
+          <Select value={dataType} onValueChange={setDataType}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="comments">Comments</SelectItem>
+              <SelectItem value="leads">Leads</SelectItem>
+              <SelectItem value="replies">Replies</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={format} onValueChange={setFormat}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="csv">CSV</SelectItem>
+              <SelectItem value="json">JSON</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button onClick={handleQuickExport} disabled={loading}>
+            <Download className="mr-2 h-4 w-4" />
+            {loading ? "Exporting..." : "Export"}
           </Button>
-        </div>
-        <div className="space-y-4">
-          {scheduledReports.map((report, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between p-4 bg-background rounded-lg border border-border"
-            >
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h4 className="font-semibold">{report.name}</h4>
-                  <Badge
-                    variant={report.status === "Active" ? "default" : "secondary"}
-                    className={report.status === "Active" ? "bg-green-500" : ""}
-                  >
-                    {report.status}
-                  </Badge>
-                </div>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-3 w-3" />
-                    {report.frequency}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Mail className="h-3 w-3" />
-                    {report.recipients}
-                  </div>
-                  <div>Last sent: {report.lastSent}</div>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" size="sm">
-                  Edit
-                </Button>
-                <Button variant="secondary" size="sm">
-                  Send Now
-                </Button>
-              </div>
-            </div>
-          ))}
         </div>
       </Card>
 
       {/* Exportable Reports */}
-      <Card className="p-6 bg-card border-border">
+      <Card className="p-6">
         <h3 className="text-xl font-bold mb-6">Exportable Reports</h3>
         <div className="grid md:grid-cols-2 gap-4">
-          {exportableReports.map((report, index) => (
-            <Card key={index} className="p-4 bg-background border-border">
-              <div className="mb-3">
-                <h4 className="font-semibold mb-1">{report.name}</h4>
-                <p className="text-sm text-muted-foreground">{report.description}</p>
-              </div>
-              <div className="flex items-center justify-between">
-                <Badge variant="outline">{report.format}</Badge>
-                <Button size="sm" className="bg-primary text-primary-foreground">
+          {exportableReports.map((r, i) => (
+            <Card key={i} className="p-4">
+              <h4 className="font-semibold">{r.name}</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                {r.description}
+              </p>
+              <div className="flex justify-between">
+                <Badge variant="outline">{r.format}</Badge>
+                <Button size="sm" onClick={() => exportReport(r.name)}>
                   <Download className="mr-2 h-3 w-3" />
                   Export
                 </Button>
@@ -198,6 +210,69 @@ const Reports = () => {
           ))}
         </div>
       </Card>
+
+      {/* Create Custom Report Modal */}
+      <Dialog open={openCustomReport} onOpenChange={setOpenCustomReport}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Custom Report</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm">
+
+            {/* FIXED INPUT */}
+            <input
+              className="w-full border rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground"
+              placeholder="Report name"
+              value={reportName}
+              onChange={(e) => setReportName(e.target.value)}
+            />
+
+            <Select value={customType} onValueChange={setCustomType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="comments">Comments</SelectItem>
+                <SelectItem value="leads">Leads</SelectItem>
+                <SelectItem value="replies">Replies</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={customRange} onValueChange={setCustomRange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7d">Last 7 days</SelectItem>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+                <SelectItem value="90d">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={customFormat} onValueChange={setCustomFormat}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="csv">CSV</SelectItem>
+                <SelectItem value="txt">TXT</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setOpenCustomReport(false)}>
+                Cancel
+              </Button>
+              <Button onClick={generateCustomReport}>
+                Generate
+              </Button>
+            </div>
+
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 };

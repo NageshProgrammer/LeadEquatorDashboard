@@ -31,7 +31,7 @@ export const DashboardLayout = () => {
     { icon: Radio, label: "Monitor Stream", path: "/monitor-stream" },
     { icon: Clock, label: "Comment Timeline", path: "/comment-timeline" },
     { icon: Users, label: "Leads & Tracking", path: "/leads-pipeline" },
-    { icon: Zap, label: "Automations", path: "/automations-builder" },
+    // { icon: Zap, label: "Automations", path: "/automations-builder" },
     { icon: FileText, label: "Reports", path: "/reports" },
     { icon: Settings, label: "Settings", path: "/settings" },
   ];

@@ -3,6 +3,17 @@ import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 
 const Pricing = () => {
+  /* -------- FUNCTIONAL LOGIC ONLY -------- */
+
+  const handlePlanAction = (planName: string) => {
+    // later: route to contact form / API / modal
+    alert(`Request submitted for ${planName} plan`);
+  };
+
+  const handlePilotCTA = () => {
+    alert("Pilot Program request initiated");
+  };
+
   const plans = [
     {
       name: "Pilot",
@@ -64,6 +75,7 @@ const Pricing = () => {
   return (
     <div className="min-h-screen pt-24 pb-12">
       <div className="container mx-auto px-4">
+
         {/* Header */}
         <div className="text-center mb-16 animate-fade-in">
           <h1 className="text-5xl font-bold mb-6">
@@ -94,7 +106,7 @@ const Pricing = () => {
                   </span>
                 </div>
               )}
-              
+
               <div className="text-center mb-8">
                 <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
                 <div className="text-4xl font-bold text-primary mb-2">
@@ -120,6 +132,7 @@ const Pricing = () => {
                     ? "bg-primary text-primary-foreground hover:bg-primary/90"
                     : "bg-secondary text-secondary-foreground hover:bg-secondary/90"
                 }`}
+                onClick={() => handlePlanAction(plan.name)}
               >
                 {plan.cta}
               </Button>
@@ -170,10 +183,12 @@ const Pricing = () => {
           <Button
             size="lg"
             className="bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={handlePilotCTA}
           >
             Request Pilot Program
           </Button>
         </div>
+
       </div>
     </div>
   );
