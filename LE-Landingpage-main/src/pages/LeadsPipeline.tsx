@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -25,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { ExternalLink, Download, RefreshCcw } from "lucide-react";
 
+/* -------------------- Types -------------------- */
 type Lead = {
   _id: string;
   leadId: string;
@@ -54,27 +54,67 @@ const LeadsPipeline = () => {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [syncing, setSyncing] = useState(false);
 
-  const fetchLeads = async () => {
+  /* -------------------- CSV LOADER (FINAL & SAFE) -------------------- */
+  const fetchLeadsFromCSV = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5000/api/lead-pipeline");
-      const json = await res.json();
-      setLeads(json.data || []);
-    } catch {
-      alert("Failed to fetch leads");
+      const res = await fetch("/data/leads.csv");
+      const text = await res.text();
+
+      // ❌ If wrong file loaded
+      if (text.startsWith("<!doctype html")) {
+        throw new Error("CSV file not found");
+      }
+
+      const lines = text.trim().split("\n");
+      const headers = lines[0].split(",");
+
+      const data: Lead[] = lines.slice(1).map((line, index) => {
+        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+
+        const row: any = {};
+        headers.forEach((h, i) => {
+          row[h] = values[i]?.replace(/^"|"$/g, "").trim();
+        });
+
+        return {
+          _id: row._id || String(index),
+          leadId: row.leadId,
+          name: row.name,
+          company: row.company,
+          platform: row.platform,
+          intent: Number(row.intent),
+          status: row.status,
+          value: Number(row.value),
+          source: row.source,
+          createdAt: row.createdAt,
+        };
+      });
+
+      setLeads(data);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to load leads CSV. Check file path.");
     } finally {
       setLoading(false);
     }
   };
 
+  /* 🔥 THIS WAS MISSING */
   useEffect(() => {
-    fetchLeads();
+    fetchLeadsFromCSV();
   }, []);
 
   /* -------------------- Helpers -------------------- */
+  const updateStatus = (id: string, status: string) => {
+    setLeads((prev) =>
+      prev.map((l) => (l._id === id ? { ...l, status } : l))
+    );
+  };
 
   const exportCSV = () => {
-    const headers = Object.keys(leads[0] || {}).join(",");
+    if (!leads.length) return;
+    const headers = Object.keys(leads[0]).join(",");
     const rows = leads.map((l) =>
       Object.values(l)
         .map((v) => `"${v}"`)
@@ -84,7 +124,6 @@ const LeadsPipeline = () => {
 
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
     a.href = url;
     a.download = "leads-pipeline.csv";
@@ -93,31 +132,15 @@ const LeadsPipeline = () => {
 
   const syncCRM = async () => {
     setSyncing(true);
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 1200));
     setSyncing(false);
-    alert("CRM sync completed successfully");
-  };
-
-  const updateStatus = async (leadId: string, status: string) => {
-    setLeads((prev) =>
-      prev.map((l) => (l._id === leadId ? { ...l, status } : l))
-    );
-
-    // optional backend call
-    await fetch(`http://localhost:5000/api/leads/${leadId}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
+    alert("CRM sync completed");
   };
 
   /* -------------------- UI -------------------- */
-
   return (
     <div className="min-h-screen pt-24 pb-12">
       <div className="container mx-auto px-4">
-
-        {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-4xl font-bold">Leads Pipeline</h1>
@@ -126,7 +149,7 @@ const LeadsPipeline = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={exportCSV} disabled={!leads.length}>
+            <Button variant="secondary" onClick={exportCSV}>
               <Download className="h-4 w-4 mr-2" />
               Export CSV
             </Button>
@@ -137,15 +160,10 @@ const LeadsPipeline = () => {
           </div>
         </div>
 
-        {/* Table */}
         <Card>
           {loading ? (
             <div className="p-8 text-center text-muted-foreground">
               Loading leads...
-            </div>
-          ) : leads.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              No leads found
             </div>
           ) : (
             <Table>
@@ -161,7 +179,10 @@ const LeadsPipeline = () => {
               <TableBody>
                 {leads.map((lead) => (
                   <TableRow key={lead._id}>
-                    <TableCell className="font-mono">{lead.leadId}</TableCell>
+                    <TableCell className="font-mono">
+                      {lead.leadId}
+                    </TableCell>
+
                     <TableCell>
                       <div className="font-semibold">{lead.name}</div>
                       <div className="text-xs text-muted-foreground">
@@ -172,9 +193,11 @@ const LeadsPipeline = () => {
                     <TableCell>
                       <Select
                         value={lead.status}
-                        onValueChange={(v) => updateStatus(lead._id, v)}
+                        onValueChange={(v) =>
+                          updateStatus(lead._id, v)
+                        }
                       >
-                        <SelectTrigger className="w-40">
+                        <SelectTrigger className="w-44">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -187,7 +210,9 @@ const LeadsPipeline = () => {
                       </Select>
                     </TableCell>
 
-                    <TableCell>${lead.value.toLocaleString()}</TableCell>
+                    <TableCell>
+                      ₹{lead.value.toLocaleString("en-IN")}
+                    </TableCell>
 
                     <TableCell>
                       <Button
@@ -205,9 +230,11 @@ const LeadsPipeline = () => {
           )}
         </Card>
 
-        {/* Lead Details Modal */}
-        <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
-          <DialogContent className="max-w-lg">
+        <Dialog
+          open={!!selectedLead}
+          onOpenChange={() => setSelectedLead(null)}
+        >
+          <DialogContent>
             <DialogHeader>
               <DialogTitle>Lead Details</DialogTitle>
             </DialogHeader>
@@ -218,12 +245,10 @@ const LeadsPipeline = () => {
                 <p><b>Platform:</b> {selectedLead.platform}</p>
                 <p><b>Intent:</b> {selectedLead.intent}</p>
                 <p><b>Source:</b> {selectedLead.source}</p>
-                <p><b>Created:</b> {new Date(selectedLead.createdAt).toLocaleString()}</p>
               </div>
             )}
           </DialogContent>
         </Dialog>
-
       </div>
     </div>
   );

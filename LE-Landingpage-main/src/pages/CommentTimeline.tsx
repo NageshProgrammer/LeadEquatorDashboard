@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,75 +24,150 @@ import {
   Cell,
 } from "recharts";
 
+/* ================= TYPES ================= */
+
+type LeadRow = {
+  name: string;
+  platform: string;
+  intent: number;
+  createdAt: string;
+  replyStatus: "Not Sent" | "Sent";
+  value: number;
+};
+
+type TimelinePoint = {
+  time: string;
+  comments: number;
+  replies: number;
+  clicks: number;
+};
+
+type ScatterEvent = {
+  time: number;
+  intent: number;
+  type: "comment" | "reply" | "click";
+};
+
+/* ================= COMPONENT ================= */
+
 const CommentTimeline = () => {
-  // Timeline data: comment → reply → click events
-  const timelineData = [
-    { time: "09:00", comments: 12, replies: 8, clicks: 3 },
-    { time: "10:00", comments: 18, replies: 15, clicks: 7 },
-    { time: "11:00", comments: 24, replies: 20, clicks: 12 },
-    { time: "12:00", comments: 15, replies: 12, clicks: 8 },
-    { time: "13:00", comments: 20, replies: 16, clicks: 10 },
-    { time: "14:00", comments: 28, replies: 24, clicks: 15 },
-    { time: "15:00", comments: 22, replies: 18, clicks: 11 },
-    { time: "16:00", comments: 16, replies: 13, clicks: 6 },
-  ];
+  const [timelineData, setTimelineData] = useState<TimelinePoint[]>([]);
+  const [eventData, setEventData] = useState<ScatterEvent[]>([]);
+  const [recentEvents, setRecentEvents] = useState<
+    {
+      author: string;
+      platform: string;
+      intent: number;
+      event: string;
+      duration: string;
+      time: string;
+    }[]
+  >([]);
 
-  // Event scatter data for detailed view
-  const eventData = [
-    { time: 1, type: "comment", platform: "LinkedIn", intent: 92 },
-    { time: 2, type: "reply", platform: "LinkedIn", intent: 92 },
-    { time: 3, type: "click", platform: "LinkedIn", intent: 92 },
-    { time: 4, type: "comment", platform: "Reddit", intent: 78 },
-    { time: 5, type: "reply", platform: "Reddit", intent: 78 },
-    { time: 6, type: "comment", platform: "X", intent: 85 },
-    { time: 7, type: "reply", platform: "X", intent: 85 },
-    { time: 8, type: "click", platform: "X", intent: 85 },
-    { time: 9, type: "comment", platform: "LinkedIn", intent: 95 },
-    { time: 10, type: "reply", platform: "LinkedIn", intent: 95 },
-    { time: 11, type: "click", platform: "LinkedIn", intent: 95 },
-    { time: 12, type: "click", platform: "LinkedIn", intent: 95 },
-  ];
+  /* ================= LOAD CSV ================= */
 
-  const getEventColor = (type: string) => {
+  useEffect(() => {
+    const loadCSV = async () => {
+      const res = await fetch("/data/leads.csv");
+      const text = await res.text();
+      if (text.startsWith("<!doctype html")) return;
+
+      const lines = text.trim().split("\n");
+      const headers = lines[0].split(",");
+
+      const rows: LeadRow[] = lines.slice(1).map((line) => {
+        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+        const row: Record<string, string> = {};
+
+        headers.forEach((h, i) => {
+          row[h] = values[i]?.replace(/^"|"$/g, "").trim() ?? "";
+        });
+
+        return {
+          name: row.name,
+          platform: row.platform,
+          intent: Number(row.intent),
+          createdAt: row.createdAt,
+          replyStatus: (row.replyStatus as "Sent" | "Not Sent") ?? "Not Sent",
+          value: Number(row.value),
+        };
+      });
+
+      /* ================= LINE CHART ================= */
+
+      const grouped: Record<string, TimelinePoint> = {};
+
+      rows.forEach((r) => {
+        const hour = new Date(r.createdAt).getHours();
+        const label = `${hour}:00`;
+
+        if (!grouped[label]) {
+          grouped[label] = {
+            time: label,
+            comments: 0,
+            replies: 0,
+            clicks: 0,
+          };
+        }
+
+        grouped[label].comments += 1;
+
+        if (r.replyStatus === "Sent") {
+          grouped[label].replies += 1;
+          grouped[label].clicks += r.value > 0 ? 1 : 0;
+        }
+      });
+
+      setTimelineData(Object.values(grouped));
+
+      /* ================= SCATTER EVENTS ================= */
+
+      let t = 1;
+      const scatter: ScatterEvent[] = [];
+
+      rows.forEach((r) => {
+        scatter.push({ time: t++, intent: r.intent, type: "comment" });
+
+        if (r.replyStatus === "Sent") {
+          scatter.push({ time: t++, intent: r.intent, type: "reply" });
+
+          if (r.value > 0) {
+            scatter.push({ time: t++, intent: r.intent, type: "click" });
+          }
+        }
+      });
+
+      setEventData(scatter);
+
+      /* ================= RECENT EVENTS ================= */
+
+      setRecentEvents(
+        rows.slice(-5).map((r) => ({
+          author: r.name,
+          platform: r.platform,
+          intent: r.intent,
+          event:
+            r.replyStatus === "Sent"
+              ? "Comment → Reply → Click"
+              : "Comment",
+          duration: r.replyStatus === "Sent" ? "8 minutes" : "—",
+          time: new Date(r.createdAt).toLocaleTimeString(),
+        }))
+      );
+    };
+
+    loadCSV();
+  }, []);
+
+  /* ================= HELPERS ================= */
+
+  const getEventColor = (type: ScatterEvent["type"]) => {
     if (type === "comment") return "hsl(var(--primary))";
     if (type === "reply") return "hsl(var(--chart-2))";
     return "hsl(var(--chart-3))";
   };
 
-  const recentEvents = [
-    {
-      time: "14:32",
-      platform: "LinkedIn",
-      author: "Sarah Johnson",
-      event: "Comment → Reply → Click",
-      duration: "8 minutes",
-      intent: 92,
-    },
-    {
-      time: "14:18",
-      platform: "Reddit",
-      author: "Mike Chen",
-      event: "Comment → Reply",
-      duration: "5 minutes",
-      intent: 88,
-    },
-    {
-      time: "13:45",
-      platform: "X",
-      author: "Emma Wilson",
-      event: "Comment → Reply → Click",
-      duration: "12 minutes",
-      intent: 85,
-    },
-    {
-      time: "13:20",
-      platform: "LinkedIn",
-      author: "David Martinez",
-      event: "Comment → Reply → Click → Click",
-      duration: "25 minutes",
-      intent: 95,
-    },
-  ];
+  /* ================= UI ================= */
 
   return (
     <div className="p-8 space-y-8 bg-background">
@@ -121,126 +197,60 @@ const CommentTimeline = () => {
         </div>
       </div>
 
-      {/* Event Flow Chart */}
+      {/* Line Chart */}
       <Card className="p-6 bg-card border-border">
         <h3 className="text-xl font-bold mb-6">Event Flow Over Time</h3>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={timelineData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" />
-            <YAxis stroke="hsl(var(--muted-foreground))" />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-              }}
-            />
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="time" />
+            <YAxis />
+            <Tooltip />
             <Legend />
-            <Line
-              type="monotone"
-              dataKey="comments"
-              stroke="hsl(var(--primary))"
-              strokeWidth={2}
-              name="Comments"
-            />
-            <Line
-              type="monotone"
-              dataKey="replies"
-              stroke="hsl(var(--chart-2))"
-              strokeWidth={2}
-              name="Replies"
-            />
-            <Line
-              type="monotone"
-              dataKey="clicks"
-              stroke="hsl(var(--chart-3))"
-              strokeWidth={2}
-              name="Clicks"
-            />
+            <Line dataKey="comments" stroke="hsl(var(--primary))" />
+            <Line dataKey="replies" stroke="hsl(var(--chart-2))" />
+            <Line dataKey="clicks" stroke="hsl(var(--chart-3))" />
           </LineChart>
         </ResponsiveContainer>
       </Card>
 
-      {/* Event Scatter Plot */}
+      {/* Scatter */}
       <Card className="p-6 bg-card border-border">
         <h3 className="text-xl font-bold mb-6">Individual Event Timeline</h3>
-        <div className="flex items-center gap-4 mb-4">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4 text-primary" />
-            <span className="text-sm">Comment</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Send className="h-4 w-4" style={{ color: "hsl(var(--chart-2))" }} />
-            <span className="text-sm">Auto Reply</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <MousePointer className="h-4 w-4" style={{ color: "hsl(var(--chart-3))" }} />
-            <span className="text-sm">Link Click</span>
-          </div>
-        </div>
         <ResponsiveContainer width="100%" height={250}>
           <ScatterChart>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis
-              dataKey="time"
-              name="Time"
-              stroke="hsl(var(--muted-foreground))"
-            />
-            <YAxis
-              dataKey="intent"
-              name="Intent"
-              stroke="hsl(var(--muted-foreground))"
-            />
-            <Tooltip
-              cursor={{ strokeDasharray: "3 3" }}
-              contentStyle={{
-                backgroundColor: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-              }}
-            />
-            <Scatter data={eventData} fill="hsl(var(--primary))">
-              {eventData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={getEventColor(entry.type)} />
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="time" />
+            <YAxis dataKey="intent" />
+            <Tooltip />
+            <Scatter data={eventData}>
+              {eventData.map((e, i) => (
+                <Cell key={i} fill={getEventColor(e.type)} />
               ))}
             </Scatter>
           </ScatterChart>
         </ResponsiveContainer>
       </Card>
 
-      {/* Recent Event Sequences */}
+      {/* Recent */}
       <Card className="p-6 bg-card border-border">
         <h3 className="text-xl font-bold mb-6">Recent Event Sequences</h3>
         <div className="space-y-4">
-          {recentEvents.map((event, index) => (
+          {recentEvents.map((e, i) => (
             <div
-              key={index}
-              className="flex items-center justify-between p-4 bg-background rounded-lg border border-border hover:border-primary/50 transition-colors"
+              key={i}
+              className="flex items-center justify-between p-4 bg-background rounded-lg border"
             >
               <div className="flex items-center gap-4">
-                <Badge
-                  className={
-                    event.intent >= 85
-                      ? "bg-green-500 text-white"
-                      : "bg-chart-2 text-foreground"
-                  }
-                >
-                  {event.intent}
-                </Badge>
+                <Badge>{e.intent}</Badge>
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-semibold">{event.author}</span>
-                    <Badge variant="secondary" className="text-xs">
-                      {event.platform}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">{event.time}</span>
+                  <div className="font-semibold">{e.author}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {e.event}
                   </div>
-                  <div className="text-sm text-muted-foreground">{event.event}</div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-sm font-medium">{event.duration}</div>
-                <div className="text-xs text-muted-foreground">Duration</div>
-              </div>
+              <div className="text-right text-sm">{e.duration}</div>
             </div>
           ))}
         </div>

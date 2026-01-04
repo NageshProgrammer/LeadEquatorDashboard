@@ -17,43 +17,28 @@ import {
 } from "@/components/ui/dialog";
 import { Download, FileText } from "lucide-react";
 
-const Reports = () => {
-  /* -------------------- STATES -------------------- */
+/* ================= TYPES ================= */
 
-  // Quick export
+type DataType = "comments" | "leads" | "replies";
+type ExportFormat = "csv" | "json" | "txt";
+
+/* ================= COMPONENT ================= */
+
+const Reports = () => {
+  /* ---------- Quick Export ---------- */
   const [dateRange, setDateRange] = useState("7d");
-  const [dataType, setDataType] = useState("comments");
-  const [format, setFormat] = useState("csv");
+  const [dataType, setDataType] = useState<DataType>("comments");
+  const [format, setFormat] = useState<ExportFormat>("csv");
   const [loading, setLoading] = useState(false);
 
-  // Custom report
+  /* ---------- Custom Report ---------- */
   const [openCustomReport, setOpenCustomReport] = useState(false);
   const [reportName, setReportName] = useState("");
-  const [customType, setCustomType] = useState("comments");
+  const [customType, setCustomType] = useState<DataType>("comments");
   const [customRange, setCustomRange] = useState("7d");
-  const [customFormat, setCustomFormat] = useState("csv");
+  const [customFormat, setCustomFormat] = useState<ExportFormat>("csv");
 
-  // Scheduled report edit
-  const [editingReport, setEditingReport] = useState<any>(null);
-
-  /* -------------------- DATA -------------------- */
-
-  const scheduledReports = [
-    {
-      name: "Weekly Performance Summary",
-      frequency: "Every Monday, 9:00 AM",
-      recipients: "team@acmecorp.com",
-      lastSent: "2 days ago",
-      status: "Active",
-    },
-    {
-      name: "Monthly Executive Dashboard",
-      frequency: "1st of each month",
-      recipients: "executives@acmecorp.com",
-      lastSent: "15 days ago",
-      status: "Active",
-    },
-  ];
+  /* ---------- Static Config ---------- */
 
   const exportableReports = [
     {
@@ -68,70 +53,87 @@ const Reports = () => {
     },
   ];
 
-  /* -------------------- HELPERS -------------------- */
+  /* ---------- Helpers ---------- */
 
-  const downloadFile = (content: string, fileName: string, type: string) => {
-    const blob = new Blob([content], { type });
+  const downloadFile = (content: string, fileName: string, mime: string) => {
+    const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = fileName;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
-  /* -------------------- ACTIONS -------------------- */
+  const generateContent = (
+    type: DataType,
+    range: string,
+    format: ExportFormat
+  ) => {
+    const payload = {
+      type,
+      range,
+      generatedAt: new Date().toISOString(),
+    };
+
+    if (format === "json") return JSON.stringify(payload, null, 2);
+    if (format === "csv")
+      return `type,range,generatedAt\n${type},${range},${payload.generatedAt}`;
+
+    return `
+Report Type: ${type}
+Date Range: ${range}
+Generated At: ${payload.generatedAt}
+`;
+  };
+
+  /* ---------- Actions ---------- */
 
   const handleQuickExport = async () => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1000));
 
-    const data = `dateRange,dataType,generatedAt
-${dateRange},${dataType},${new Date().toISOString()}`;
-
-    downloadFile(data, `${dataType}-quick-export.${format}`, "text/csv");
+    const content = generateContent(dataType, dateRange, format);
+    downloadFile(
+      content,
+      `${dataType}-${dateRange}.${format}`,
+      format === "json" ? "application/json" : "text/plain"
+    );
 
     setLoading(false);
-    alert("Quick export completed");
   };
 
   const generateCustomReport = () => {
-    if (!reportName.trim()) {
-      alert("Please enter report name");
-      return;
-    }
+    if (!reportName.trim()) return;
 
-    const content = `
-Report Name: ${reportName}
-Data Type: ${customType}
-Date Range: ${customRange}
-Format: ${customFormat}
-Generated At: ${new Date().toLocaleString()}
-`;
+    const content = generateContent(
+      customType,
+      customRange,
+      customFormat
+    );
 
     downloadFile(
       content,
-      `${reportName.replace(/\s/g, "_")}.${customFormat}`,
+      `${reportName.replace(/\s+/g, "_")}.${customFormat}`,
       "text/plain"
     );
 
     setOpenCustomReport(false);
     setReportName("");
-    alert("Custom report generated");
   };
 
   const exportReport = (name: string) => {
+    const content = generateContent("leads", "all", "csv");
     downloadFile(
-      `Report: ${name}\nGenerated: ${new Date().toLocaleString()}`,
-      `${name.replace(/\s/g, "_")}.csv`,
+      content,
+      `${name.replace(/\s+/g, "_")}.csv`,
       "text/csv"
     );
   };
 
-  /* -------------------- UI -------------------- */
+  /* ================= UI (UNCHANGED) ================= */
 
   return (
     <div className="p-8 space-y-8 bg-background">
-
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -161,7 +163,10 @@ Generated At: ${new Date().toLocaleString()}
             </SelectContent>
           </Select>
 
-          <Select value={dataType} onValueChange={setDataType}>
+          <Select
+            value={dataType}
+            onValueChange={(v) => setDataType(v as DataType)}
+          >
             <SelectTrigger className="w-48">
               <SelectValue />
             </SelectTrigger>
@@ -172,7 +177,10 @@ Generated At: ${new Date().toLocaleString()}
             </SelectContent>
           </Select>
 
-          <Select value={format} onValueChange={setFormat}>
+          <Select
+            value={format}
+            onValueChange={(v) => setFormat(v as ExportFormat)}
+          >
             <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
@@ -211,7 +219,7 @@ Generated At: ${new Date().toLocaleString()}
         </div>
       </Card>
 
-      {/* Create Custom Report Modal */}
+      {/* Custom Report Modal */}
       <Dialog open={openCustomReport} onOpenChange={setOpenCustomReport}>
         <DialogContent>
           <DialogHeader>
@@ -219,16 +227,17 @@ Generated At: ${new Date().toLocaleString()}
           </DialogHeader>
 
           <div className="space-y-4 text-sm">
-
-            {/* FIXED INPUT */}
             <input
-              className="w-full border rounded px-3 py-2 bg-background text-foreground placeholder:text-muted-foreground"
+              className="w-full border rounded px-3 py-2 bg-background"
               placeholder="Report name"
               value={reportName}
               onChange={(e) => setReportName(e.target.value)}
             />
 
-            <Select value={customType} onValueChange={setCustomType}>
+            <Select
+              value={customType}
+              onValueChange={(v) => setCustomType(v as DataType)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -250,7 +259,10 @@ Generated At: ${new Date().toLocaleString()}
               </SelectContent>
             </Select>
 
-            <Select value={customFormat} onValueChange={setCustomFormat}>
+            <Select
+              value={customFormat}
+              onValueChange={(v) => setCustomFormat(v as ExportFormat)}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -261,18 +273,17 @@ Generated At: ${new Date().toLocaleString()}
             </Select>
 
             <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setOpenCustomReport(false)}>
+              <Button
+                variant="secondary"
+                onClick={() => setOpenCustomReport(false)}
+              >
                 Cancel
               </Button>
-              <Button onClick={generateCustomReport}>
-                Generate
-              </Button>
+              <Button onClick={generateCustomReport}>Generate</Button>
             </div>
-
           </div>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 };

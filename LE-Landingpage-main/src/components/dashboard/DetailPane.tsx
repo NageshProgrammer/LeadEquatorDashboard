@@ -4,35 +4,58 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { X, ExternalLink, Copy, Send, UserPlus } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useState } from "react";
+
+/* ================= TYPES ================= */
+
+export type DetailComment = {
+  id: number;
+  platform: string;
+  user: string;
+  followers: number;
+  timestamp: string;
+  content: string;
+  intent: number;
+  sentiment: "Positive" | "Neutral" | "Negative";
+  keywords: string[];
+  replyStatus: "Not Sent" | "Sent";
+};
 
 interface DetailPaneProps {
-  comment: {
-    id: string;
-    platform: string;
-    author: string;
-    followers: number;
-    timestamp: string;
-    content: string;
-    intentScore: number;
-    sentiment: string;
-    keywords: string[];
-    replyStatus: string;
-    replyText?: string;
-    brandLink?: string;
-    clicks: number;
-  };
+  comment: DetailComment;
   onClose: () => void;
+  onSend: (id: number) => void;
 }
 
-export const DetailPane = ({ comment, onClose }: DetailPaneProps) => {
+/* ================= COMPONENT ================= */
+
+export const DetailPane = ({ comment, onClose, onSend }: DetailPaneProps) => {
+  const [replyText, setReplyText] = useState(
+    "Thanks for sharing! We'd love to help. Check out Leadequator: [link]"
+  );
+  const [sending, setSending] = useState(false);
+
   const getIntentColor = (score: number) => {
     if (score >= 80) return "bg-green-500 text-white";
-    if (score >= 50) return "bg-chart-2 text-foreground";
-    return "bg-destructive text-destructive-foreground";
+    if (score >= 60) return "bg-chart-2 text-foreground";
+    return "bg-muted text-muted-foreground";
+  };
+
+  const handleSend = () => {
+    if (sending) return;
+
+    setSending(true);
+
+    // simulate API / AI send delay
+    setTimeout(() => {
+      onSend(comment.id); // 🔥 THIS IS THE KEY TRIGGER
+      setSending(false);
+    }, 600);
   };
 
   return (
-    <Card className="w-full max-w-2xl h-full bg-card border-border flex flex-col">
+    <Card className="w-full h-full bg-card border-border flex flex-col">
+      {/* Header */}
       <div className="p-6 border-b border-border flex items-center justify-between">
         <h3 className="text-xl font-bold">Comment Detail</h3>
         <Button variant="ghost" size="sm" onClick={onClose}>
@@ -42,25 +65,23 @@ export const DetailPane = ({ comment, onClose }: DetailPaneProps) => {
 
       <ScrollArea className="flex-1">
         <div className="p-6 space-y-6">
-          {/* Author Info */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <div className="font-semibold text-lg">{comment.author}</div>
-                <div className="text-sm text-muted-foreground">
-                  {comment.followers.toLocaleString()} followers • {comment.platform}
-                </div>
+          {/* Author */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-semibold text-lg">{comment.user}</div>
+              <div className="text-sm text-muted-foreground">
+                {comment.followers} followers • {comment.platform}
               </div>
-              <Badge variant="secondary">{comment.timestamp}</Badge>
             </div>
+            <Badge variant="secondary">{comment.timestamp}</Badge>
           </div>
 
           <Separator />
 
-          {/* Comment Content */}
+          {/* Comment */}
           <div>
-            <Label className="text-sm font-semibold mb-2">Comment</Label>
-            <p className="text-foreground leading-relaxed">{comment.content}</p>
+            <Label>Comment</Label>
+            <p className="text-sm text-foreground mt-1">{comment.content}</p>
           </div>
 
           <Separator />
@@ -68,24 +89,24 @@ export const DetailPane = ({ comment, onClose }: DetailPaneProps) => {
           {/* Intent & Sentiment */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label className="text-sm font-semibold mb-2">Intent Score</Label>
-              <Badge className={getIntentColor(comment.intentScore)}>
-                {comment.intentScore}
+              <Label>Intent Score</Label>
+              <Badge className={getIntentColor(comment.intent)}>
+                {comment.intent}
               </Badge>
             </div>
             <div>
-              <Label className="text-sm font-semibold mb-2">Sentiment</Label>
+              <Label>Sentiment</Label>
               <Badge variant="secondary">{comment.sentiment}</Badge>
             </div>
           </div>
 
           {/* Keywords */}
           <div>
-            <Label className="text-sm font-semibold mb-2">Matched Keywords</Label>
-            <div className="flex flex-wrap gap-2">
-              {comment.keywords.map((keyword, i) => (
-                <Badge key={i} variant="outline" className="border-primary/30">
-                  {keyword}
+            <Label>Matched Keywords</Label>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {comment.keywords.map((k) => (
+                <Badge key={k} variant="outline">
+                  {k}
                 </Badge>
               ))}
             </div>
@@ -93,87 +114,60 @@ export const DetailPane = ({ comment, onClose }: DetailPaneProps) => {
 
           <Separator />
 
-          {/* Auto Reply */}
-          {comment.replyText && (
-            <>
-              <div>
-                <Label className="text-sm font-semibold mb-2">Auto Reply</Label>
-                <Card className="p-4 bg-background border-border">
-                  <p className="text-sm text-foreground">{comment.replyText}</p>
-                </Card>
-                <div className="mt-2 flex items-center gap-2">
-                  <Badge
-                    variant={comment.replyStatus === "Sent" ? "default" : "secondary"}
-                    className={comment.replyStatus === "Sent" ? "bg-green-500" : ""}
-                  >
-                    {comment.replyStatus}
-                  </Badge>
-                </div>
-              </div>
-              <Separator />
-            </>
-          )}
+          {/* Auto Reply Draft */}
+          <div>
+            <Label>Auto Reply</Label>
+            <Card className="p-4 bg-background border-border mt-2">
+              <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                className="w-full bg-transparent outline-none text-sm resize-none"
+                rows={4}
+              />
+            </Card>
 
-          {/* Brand Link Tracking */}
-          {comment.brandLink && (
-            <>
-              <div>
-                <Label className="text-sm font-semibold mb-2">Brand Link Tracking</Label>
-                <Card className="p-4 bg-background border-border space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Short URL</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-mono">{comment.brandLink}</span>
-                      <Button variant="ghost" size="sm">
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <ExternalLink className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Total Clicks</span>
-                    <span className="text-sm font-bold">{comment.clicks}</span>
-                  </div>
-                </Card>
-              </div>
-              <Separator />
-            </>
-          )}
+            <div className="flex items-center gap-2 mt-3">
+              <Badge
+                variant={comment.replyStatus === "Sent" ? "default" : "secondary"}
+                className={
+                  comment.replyStatus === "Sent" ? "bg-green-500" : ""
+                }
+              >
+                {comment.replyStatus}
+              </Badge>
+            </div>
+          </div>
+
+          <Separator />
 
           {/* Suggested Replies */}
           <div>
-            <Label className="text-sm font-semibold mb-3">Suggested AI Replies</Label>
-            <div className="space-y-3">
+            <Label>Suggested AI Replies</Label>
+            <div className="space-y-3 mt-3">
               {[
-                {
-                  label: "Short & Friendly",
-                  text: "Thanks for sharing! We'd love to help. Check out Leadequator: [link]",
-                },
-                {
-                  label: "Helpful & Educational",
-                  text: "Great question! We built Leadequator to solve exactly this. It monitors conversations and converts them into leads automatically.",
-                },
-                {
-                  label: "Strong CTA",
-                  text: "Looking for a solution? Leadequator can help! Book a demo here: [link]",
-                },
-              ].map((reply, i) => (
-                <Card key={i} className="p-3 bg-background border-border">
-                  <div className="flex items-start justify-between mb-2">
-                    <Badge variant="outline" className="text-xs">
-                      {reply.label}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-foreground mb-3">{reply.text}</p>
-                  <div className="flex gap-2">
+                "Short & Friendly",
+                "Helpful & Educational",
+                "Strong CTA",
+              ].map((label) => (
+                <Card key={label} className="p-3 bg-background border-border">
+                  <Badge variant="outline" className="mb-2 text-xs">
+                    {label}
+                  </Badge>
+                  <p className="text-sm text-muted-foreground">
+                    Thanks for sharing! We'd love to help. Check out Leadequator.
+                  </p>
+                  <div className="flex gap-2 mt-2">
                     <Button size="sm" variant="secondary">
                       Edit
                     </Button>
-                    <Button size="sm" className="bg-primary text-primary-foreground">
+                    <Button
+                      size="sm"
+                      className="bg-primary text-primary-foreground"
+                      onClick={handleSend}
+                      disabled={sending || comment.replyStatus === "Sent"}
+                    >
                       <Send className="mr-2 h-3 w-3" />
-                      Send
+                      {sending ? "Sending..." : "Send"}
                     </Button>
                   </div>
                 </Card>
@@ -183,7 +177,7 @@ export const DetailPane = ({ comment, onClose }: DetailPaneProps) => {
         </div>
       </ScrollArea>
 
-      {/* Action Buttons */}
+      {/* Footer Actions */}
       <div className="p-6 border-t border-border flex gap-2">
         <Button variant="secondary" className="flex-1">
           <Copy className="mr-2 h-4 w-4" />
@@ -198,6 +192,8 @@ export const DetailPane = ({ comment, onClose }: DetailPaneProps) => {
   );
 };
 
-const Label = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-  <div className={`block font-medium ${className}`}>{children}</div>
+/* ================= LABEL ================= */
+
+const Label = ({ children }: { children: React.ReactNode }) => (
+  <div className="text-sm font-semibold mb-1">{children}</div>
 );

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Search, Filter, Sparkles, ExternalLink } from "lucide-react";
 import { FilterPanel } from "@/components/dashboard/FilterPanel";
-import { DetailPane } from "@/components/dashboard/DetailPane";
+import { DetailPane, DetailComment } from "@/components/dashboard/DetailPane";
 import {
   Table,
   TableBody,
@@ -22,37 +22,71 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+/* ================= TYPES ================= */
+
+type Thread = {
+  id: number;
+  platform: string;
+  user: string;
+  intent: number;
+  sentiment: "Positive" | "Neutral" | "Negative";
+  timestamp: string;
+  content: string;
+  engagement: { likes: number };
+  keywords: string[];
+  replyStatus: "Not Sent" | "Sent";
+};
+
+/* ================= COMPONENT ================= */
+
 const MonitorStream = () => {
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedComment, setSelectedComment] = useState<any>(null);
-  const [threads, setThreads] = useState<any[]>([
-    {
-      id: 1,
-      platform: "LinkedIn",
-      user: "Sarah Johnson",
-      avatar: "SJ",
-      intent: 92,
-      sentiment: "Positive",
-      timestamp: "2 minutes ago",
-      content:
-        "We're looking for a PR automation tool that can monitor LinkedIn conversations and generate contextual replies.",
-      engagement: { likes: 24, comments: 8 },
-      keywords: ["PR automation", "LinkedIn"],
-    },
-    {
-      id: 2,
-      platform: "Reddit",
-      user: "growth_hacker_mike",
-      avatar: "GM",
-      intent: 88,
-      sentiment: "Neutral",
-      timestamp: "15 minutes ago",
-      content:
-        "Has anyone successfully generated B2B leads without paid ads?",
-      engagement: { likes: 156, comments: 42 },
-      keywords: ["B2B leads", "organic"],
-    },
-  ]);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [selected, setSelected] = useState<Thread | null>(null);
+
+  /* ================= LOAD CSV ================= */
+
+  useEffect(() => {
+    const loadCSV = async () => {
+      const res = await fetch("/data/leads.csv");
+      const text = await res.text();
+      if (text.startsWith("<!doctype html")) return;
+
+      const lines = text.trim().split("\n");
+      const headers = lines[0].split(",");
+
+      const data: Thread[] = lines.slice(1).map((line, index) => {
+        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+        const row: Record<string, string> = {};
+
+        headers.forEach((h, i) => {
+          row[h] = values[i]?.replace(/^"|"$/g, "").trim() ?? "";
+        });
+
+        const intent = Number(row.intent);
+
+        return {
+          id: index + 1,
+          platform: row.platform,
+          user: row.name,
+          intent,
+          sentiment:
+            intent >= 80 ? "Positive" : intent >= 60 ? "Neutral" : "Negative",
+          timestamp: new Date(row.createdAt).toLocaleString(),
+          content: `Looking for solutions related to ${row.company} via ${row.platform}`,
+          engagement: { likes: Math.floor(Number(row.value) / 1000) },
+          keywords: [row.company, row.platform],
+          replyStatus: "Not Sent",
+        };
+      });
+
+      setThreads(data);
+    };
+
+    loadCSV();
+  }, []);
+
+  /* ================= HELPERS ================= */
 
   const getIntentColor = (intent: number) => {
     if (intent >= 85) return "bg-primary text-primary-foreground";
@@ -60,7 +94,7 @@ const MonitorStream = () => {
     return "bg-muted text-muted-foreground";
   };
 
-  const getSentimentColor = (sentiment: string) => {
+  const getSentimentColor = (sentiment: Thread["sentiment"]) => {
     if (sentiment === "Positive") return "text-green-500";
     if (sentiment === "Negative") return "text-destructive";
     return "text-muted-foreground";
@@ -72,52 +106,32 @@ const MonitorStream = () => {
       Reddit: "https://reddit.com",
       "X (Twitter)": "https://x.com",
       Quora: "https://quora.com",
-      YouTube: "https://youtube.com",
+      Website: "https://google.com",
     };
     window.open(links[platform] || "#", "_blank");
   };
 
-  const openDetailPane = (thread: any) => {
-    setSelectedComment({
-      id: thread.id.toString(),
-      platform: thread.platform,
-      author: thread.user,
-      followers: thread.engagement.likes,
-      timestamp: thread.timestamp,
-      content: thread.content,
-      intentScore: thread.intent,
-      sentiment: thread.sentiment,
-      keywords: thread.keywords,
-      replyStatus: "Draft Generated",
-      clicks: 0,
-    });
+  /* ================= SEND HANDLER ================= */
+
+  const handleSendReply = (id: number) => {
+    setThreads((prev) =>
+      prev.map((t) =>
+        t.id === id ? { ...t, replyStatus: "Sent" } : t
+      )
+    );
+
+    setSelected((prev) =>
+      prev && prev.id === id ? { ...prev, replyStatus: "Sent" } : prev
+    );
   };
 
-  const loadMore = () => {
-    setThreads((prev) => [
-      ...prev,
-      {
-        id: prev.length + 1,
-        platform: "Quora",
-        user: "David Martinez",
-        avatar: "DM",
-        intent: 78,
-        sentiment: "Positive",
-        timestamp: "1 hour ago",
-        content:
-          "What's the best way to track purchase intent in social conversations?",
-        engagement: { likes: 12, comments: 5 },
-        keywords: ["purchase intent", "B2B SaaS"],
-      },
-    ]);
-  };
+  /* ================= UI ================= */
 
   return (
     <div className="p-8 bg-background">
-      {/* ✅ Horizontal scroll ONLY when detail pane is open */}
       <div
         className={`flex gap-6 ${
-          selectedComment ? "overflow-x-auto" : "overflow-x-hidden"
+          selected ? "overflow-x-auto" : "overflow-x-hidden"
         }`}
       >
         {showFilters && (
@@ -126,7 +140,7 @@ const MonitorStream = () => {
           </div>
         )}
 
-        {/* Main table area */}
+        {/* TABLE */}
         <div className="flex-1 space-y-6 min-w-[900px]">
           <div className="flex items-center justify-between">
             <div>
@@ -147,7 +161,7 @@ const MonitorStream = () => {
           <Card className="p-4 bg-card border-border">
             <div className="flex gap-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="Search conversations, keywords, users..."
                   className="pl-10 bg-background"
@@ -187,41 +201,45 @@ const MonitorStream = () => {
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
-                {threads.map((thread) => (
+                {threads.map((t) => (
                   <TableRow
-                    key={thread.id}
+                    key={t.id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => openDetailPane(thread)}
+                    onClick={() => setSelected(t)}
                   >
                     <TableCell className="text-xs text-muted-foreground">
-                      {thread.timestamp}
+                      {t.timestamp}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{thread.platform}</Badge>
+                      <Badge variant="secondary">{t.platform}</Badge>
+                    </TableCell>
+                    <TableCell className="font-medium text-sm">
+                      {t.user}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate text-sm">
+                      {t.content}
                     </TableCell>
                     <TableCell>
-                      <div className="font-medium text-sm">{thread.user}</div>
-                    </TableCell>
-                    <TableCell className="max-w-xs">
-                      <p className="truncate text-sm">{thread.content}</p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getIntentColor(thread.intent)}>
-                        {thread.intent}
+                      <Badge className={getIntentColor(t.intent)}>
+                        {t.intent}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <span
-                        className={`text-sm ${getSentimentColor(
-                          thread.sentiment
-                        )}`}
-                      >
-                        {thread.sentiment}
-                      </span>
+                    <TableCell
+                      className={`text-sm ${getSentimentColor(t.sentiment)}`}
+                    >
+                      {t.sentiment}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">Not Sent</Badge>
+                      <Badge
+                        variant={t.replyStatus === "Sent" ? "default" : "secondary"}
+                        className={
+                          t.replyStatus === "Sent" ? "bg-green-500" : ""
+                        }
+                      >
+                        {t.replyStatus}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-center">0</TableCell>
                     <TableCell>
@@ -231,7 +249,7 @@ const MonitorStream = () => {
                           variant="ghost"
                           onClick={(e) => {
                             e.stopPropagation();
-                            openExternalLink(thread.platform);
+                            openExternalLink(t.platform);
                           }}
                         >
                           <ExternalLink className="h-3 w-3" />
@@ -241,7 +259,7 @@ const MonitorStream = () => {
                           className="bg-primary text-primary-foreground"
                           onClick={(e) => {
                             e.stopPropagation();
-                            openDetailPane(thread);
+                            setSelected(t);
                           }}
                         >
                           <Sparkles className="h-3 w-3" />
@@ -253,20 +271,26 @@ const MonitorStream = () => {
               </TableBody>
             </Table>
           </Card>
-
-          <div className="text-center">
-            <Button variant="secondary" size="lg" onClick={loadMore}>
-              Load More Conversations
-            </Button>
-          </div>
         </div>
 
-        {/* Detail Pane */}
-        {selectedComment && (
+        {/* DETAIL PANE */}
+        {selected && (
           <div className="w-[600px] flex-shrink-0">
             <DetailPane
-              comment={selectedComment}
-              onClose={() => setSelectedComment(null)}
+              comment={{
+                id: selected.id,
+                platform: selected.platform,
+                user: selected.user,
+                followers: selected.engagement.likes,
+                timestamp: selected.timestamp,
+                content: selected.content,
+                intent: selected.intent,
+                sentiment: selected.sentiment,
+                keywords: selected.keywords,
+                replyStatus: selected.replyStatus,
+              }}
+              onClose={() => setSelected(null)}
+              onSend={handleSendReply}
             />
           </div>
         )}
