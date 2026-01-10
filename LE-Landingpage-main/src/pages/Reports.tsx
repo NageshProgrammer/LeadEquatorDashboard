@@ -9,51 +9,72 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Download, FileText } from "lucide-react";
+import { Download, Mail, FileText, Calendar } from "lucide-react";
 
 /* ================= TYPES ================= */
 
-type DataType = "comments" | "leads" | "replies";
-type ExportFormat = "csv" | "json" | "txt";
+type DataType = "comments" | "leads" | "replies" | "clicks";
+type ExportFormat = "csv" | "json" | "excel" | "pdf";
 
 /* ================= COMPONENT ================= */
 
 const Reports = () => {
-  /* ---------- Quick Export ---------- */
+  /* ---------- Quick Export State ---------- */
   const [dateRange, setDateRange] = useState("7d");
   const [dataType, setDataType] = useState<DataType>("comments");
   const [format, setFormat] = useState<ExportFormat>("csv");
   const [loading, setLoading] = useState(false);
 
-  /* ---------- Custom Report ---------- */
-  const [openCustomReport, setOpenCustomReport] = useState(false);
-  const [reportName, setReportName] = useState("");
-  const [customType, setCustomType] = useState<DataType>("comments");
-  const [customRange, setCustomRange] = useState("7d");
-  const [customFormat, setCustomFormat] = useState<ExportFormat>("csv");
+  /* ---------- Static Data (UI) ---------- */
 
-  /* ---------- Static Config ---------- */
+  const scheduledReports = [
+    {
+      name: "Weekly Performance Summary",
+      frequency: "Every Monday, 9:00 AM",
+      recipients: "team@acmecorp.com",
+      lastSent: "2 days ago",
+      status: "Active",
+    },
+    {
+      name: "Monthly Executive Dashboard",
+      frequency: "1st of each month",
+      recipients: "executives@acmecorp.com",
+      lastSent: "15 days ago",
+      status: "Active",
+    },
+    {
+      name: "Daily High-Intent Digest",
+      frequency: "Daily, 8:00 AM",
+      recipients: "sales@acmecorp.com",
+      lastSent: "12 hours ago",
+      status: "Active",
+    },
+  ];
 
   const exportableReports = [
     {
       name: "Comment Export (All Fields)",
-      description: "Full dataset with timestamps, intent, sentiment",
+      description: "Full dataset with timestamps, intent, sentiment, replies",
       format: "CSV / JSON",
     },
     {
       name: "Lead Tracking Report",
-      description: "Leads with attribution and CRM sync status",
+      description: "Leads with click attribution and CRM sync status",
       format: "CSV / Excel",
+    },
+    {
+      name: "Template Performance",
+      description: "Auto-reply templates with CTR and conversions",
+      format: "CSV",
+    },
+    {
+      name: "Platform Breakdown",
+      description: "Comments, replies, and leads by platform",
+      format: "PDF / CSV",
     },
   ];
 
-  /* ---------- Helpers ---------- */
+  /* ================= HELPERS ================= */
 
   const downloadFile = (content: string, fileName: string, mime: string) => {
     const blob = new Blob([content], { type: mime });
@@ -80,14 +101,10 @@ const Reports = () => {
     if (format === "csv")
       return `type,range,generatedAt\n${type},${range},${payload.generatedAt}`;
 
-    return `
-Report Type: ${type}
-Date Range: ${range}
-Generated At: ${payload.generatedAt}
-`;
+    return `Report Type: ${type}\nDate Range: ${range}\nGenerated At: ${payload.generatedAt}`;
   };
 
-  /* ---------- Actions ---------- */
+  /* ================= ACTIONS ================= */
 
   const handleQuickExport = async () => {
     setLoading(true);
@@ -102,25 +119,6 @@ Generated At: ${payload.generatedAt}
     setLoading(false);
   };
 
-  const generateCustomReport = () => {
-    if (!reportName.trim()) return;
-
-    const content = generateContent(
-      customType,
-      customRange,
-      customFormat
-    );
-
-    downloadFile(
-      content,
-      `${reportName.replace(/\s+/g, "_")}.${customFormat}`,
-      "text/plain"
-    );
-
-    setOpenCustomReport(false);
-    setReportName("");
-  };
-
   const exportReport = (name: string) => {
     const content = generateContent("leads", "all", "csv");
     downloadFile(
@@ -130,19 +128,19 @@ Generated At: ${payload.generatedAt}
     );
   };
 
-  /* ================= UI (UNCHANGED) ================= */
+  /* ================= UI ================= */
 
   return (
     <div className="p-8 space-y-8 bg-background">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Reports & Exports</h1>
+          <h1 className="text-3xl font-bold mb-2">Reports & Exports</h1>
           <p className="text-muted-foreground">
-            Generate reports and schedule automated summaries
+            Generate custom reports and schedule automated summaries
           </p>
         </div>
-        <Button onClick={() => setOpenCustomReport(true)}>
+        <Button className="bg-primary text-primary-foreground">
           <FileText className="mr-2 h-4 w-4" />
           Create Custom Report
         </Button>
@@ -151,49 +149,87 @@ Generated At: ${payload.generatedAt}
       {/* Quick Export */}
       <Card className="p-6">
         <h3 className="text-xl font-bold mb-6">Quick Export</h3>
-        <div className="flex gap-4 items-end">
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="24h">Last 24 hours</SelectItem>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-end gap-4">
+          <div className="flex-1">
+            <label className="block text-sm font-medium mb-2">Date Range</label>
+            <Select value={dateRange} onValueChange={setDateRange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="24h">Last 24 hours</SelectItem>
+                <SelectItem value="7d">Last 7 days</SelectItem>
+                <SelectItem value="30d">Last 30 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select
-            value={dataType}
-            onValueChange={(v) => setDataType(v as DataType)}
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="comments">Comments</SelectItem>
-              <SelectItem value="leads">Leads</SelectItem>
-              <SelectItem value="replies">Replies</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex-1">
+            <label className="block text-sm font-medium mb-2">Data Type</label>
+            <Select
+              value={dataType}
+              onValueChange={(v) => setDataType(v as DataType)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="comments">Comments</SelectItem>
+                <SelectItem value="leads">Leads</SelectItem>
+                <SelectItem value="replies">Auto Replies</SelectItem>
+                <SelectItem value="clicks">Link Clicks</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          <Select
-            value={format}
-            onValueChange={(v) => setFormat(v as ExportFormat)}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="csv">CSV</SelectItem>
-              <SelectItem value="json">JSON</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex-1">
+            <label className="block text-sm font-medium mb-2">Format</label>
+            <Select
+              value={format}
+              onValueChange={(v) => setFormat(v as ExportFormat)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="csv">CSV</SelectItem>
+                <SelectItem value="json">JSON</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <Button onClick={handleQuickExport} disabled={loading}>
             <Download className="mr-2 h-4 w-4" />
             {loading ? "Exporting..." : "Export"}
           </Button>
+        </div>
+      </Card>
+
+      {/* Scheduled Reports */}
+      <Card className="p-6">
+        <h3 className="text-xl font-bold mb-6">Scheduled Reports</h3>
+        <div className="space-y-4">
+          {scheduledReports.map((r, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between p-4 border rounded-lg"
+            >
+              <div>
+                <div className="flex gap-2 items-center mb-1">
+                  <h4 className="font-semibold">{r.name}</h4>
+                  <Badge className="bg-green-500">{r.status}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  <Calendar className="inline h-3 w-3 mr-1" />
+                  {r.frequency} · <Mail className="inline h-3 w-3 mr-1" />
+                  {r.recipients}
+                </p>
+              </div>
+              <Button size="sm" onClick={() => exportReport(r.name)}>
+                Send Now
+              </Button>
+            </div>
+          ))}
         </div>
       </Card>
 
@@ -218,72 +254,6 @@ Generated At: ${payload.generatedAt}
           ))}
         </div>
       </Card>
-
-      {/* Custom Report Modal */}
-      <Dialog open={openCustomReport} onOpenChange={setOpenCustomReport}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Custom Report</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 text-sm">
-            <input
-              className="w-full border rounded px-3 py-2 bg-background"
-              placeholder="Report name"
-              value={reportName}
-              onChange={(e) => setReportName(e.target.value)}
-            />
-
-            <Select
-              value={customType}
-              onValueChange={(v) => setCustomType(v as DataType)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="comments">Comments</SelectItem>
-                <SelectItem value="leads">Leads</SelectItem>
-                <SelectItem value="replies">Replies</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={customRange} onValueChange={setCustomRange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">Last 7 days</SelectItem>
-                <SelectItem value="30d">Last 30 days</SelectItem>
-                <SelectItem value="90d">Last 90 days</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={customFormat}
-              onValueChange={(v) => setCustomFormat(v as ExportFormat)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="csv">CSV</SelectItem>
-                <SelectItem value="txt">TXT</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => setOpenCustomReport(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={generateCustomReport}>Generate</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

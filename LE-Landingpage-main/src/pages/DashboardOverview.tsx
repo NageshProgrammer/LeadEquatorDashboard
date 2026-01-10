@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
   MessageSquare,
   ThumbsUp,
   AlertCircle,
+  Download,
 } from "lucide-react";
 import {
   LineChart,
@@ -34,6 +35,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 /* ================= TYPES ================= */
 type Lead = {
@@ -50,6 +53,8 @@ type CsvRow = Record<string, string>;
 
 const DashboardOverview = () => {
   const navigate = useNavigate();
+  const dashboardRef = useRef<HTMLDivElement>(null);
+
   const [range, setRange] = useState<"24h" | "7d" | "30d" | "custom">("7d");
   const [leads, setLeads] = useState<Lead[]>([]);
 
@@ -58,7 +63,6 @@ const DashboardOverview = () => {
     const loadCSV = async () => {
       const res = await fetch("/data/leads.csv");
       const text = await res.text();
-
       if (text.startsWith("<!doctype html")) return;
 
       const lines = text.trim().split("\n");
@@ -89,12 +93,11 @@ const DashboardOverview = () => {
     loadCSV();
   }, []);
 
-  /* ================= REAL DATA DERIVATION ================= */
-
+  /* ================= DERIVED DATA ================= */
   const totalLeads = leads.length;
   const highIntent = leads.filter((l) => l.intent >= 70).length;
   const replies = leads.filter((l) => l.status !== "New").length;
-  const clicks = totalLeads * 3; // proxy metric
+  const clicks = totalLeads * 3;
   const converted = leads.filter((l) => l.status === "Closed Won").length;
   const conversion =
     totalLeads > 0 ? ((converted / totalLeads) * 100).toFixed(1) + "%" : "0%";
@@ -171,11 +174,7 @@ const DashboardOverview = () => {
 
   const sentimentData = [
     { name: "Positive", value: highIntent, color: "hsl(var(--primary))" },
-    {
-      name: "Neutral",
-      value: totalLeads - highIntent,
-      color: "hsl(var(--muted))",
-    },
+    { name: "Neutral", value: totalLeads - highIntent, color: "hsl(var(--muted))" },
     { name: "Negative", value: 0, color: "hsl(var(--destructive))" },
   ];
 
@@ -194,19 +193,42 @@ const DashboardOverview = () => {
   );
 
   const kpiData = [
-    { icon: MessageSquare, label: "New Comments", value: rangeData[range].kpi.comments, change: "+", trend: "up" as const },
-    { icon: AlertCircle, label: "High-Intent (≥70)", value: rangeData[range].kpi.highIntent, change: "+", trend: "up" as const },
-    { icon: ThumbsUp, label: "Auto Replies Sent", value: rangeData[range].kpi.replies, change: "+", trend: "up" as const },
-    { icon: Users, label: "Link Clicks", value: rangeData[range].kpi.clicks, change: "+", trend: "up" as const },
-    { icon: TrendingUp, label: "Engagement→Lead %", value: rangeData[range].kpi.conversion, change: "+", trend: "up" as const },
-    { icon: Activity, label: "Avg Reply Time", value: rangeData[range].kpi.replyTime, change: "", trend: "up" as const },
+    { icon: MessageSquare, label: "New Comments", value: rangeData[range].kpi.comments },
+    { icon: AlertCircle, label: "High-Intent (≥70)", value: rangeData[range].kpi.highIntent },
+    { icon: ThumbsUp, label: "Auto Replies Sent", value: rangeData[range].kpi.replies },
+    { icon: Users, label: "Link Clicks", value: rangeData[range].kpi.clicks },
+    { icon: TrendingUp, label: "Engagement→Lead %", value: rangeData[range].kpi.conversion },
+    { icon: Activity, label: "Avg Reply Time", value: rangeData[range].kpi.replyTime },
   ];
 
-  const minutesAgo = (m: number) => `${m} min ago`;
+  /* ================= EXPORT CSV ================= */
+  const exportCSV = () => {
+    const rows: string[][] = [];
 
-  const exportReport = () => {
-    const rows = [["Metric", "Value"], ...kpiData.map(k => [k.label, k.value])];
-    const csv = rows.map(r => r.join(",")).join("\n");
+    rows.push(["Metric", "Value"]);
+    kpiData.forEach((k) => rows.push([k.label, k.value]));
+    rows.push([]);
+
+    rows.push(["Sentiment", "Count"]);
+    sentimentData.forEach((s) => rows.push([s.name, String(s.value)]));
+    rows.push([]);
+
+    rows.push(["Platform", "Threads", "Leads"]);
+    platformData.forEach((p) =>
+      rows.push([p.platform, String(p.threads), String(p.leads)])
+    );
+    rows.push([]);
+
+    rows.push(["Recent High Intent Leads"]);
+    rows.push(["Name", "Platform", "Intent"]);
+    leads
+      .filter((l) => l.intent >= 80)
+      .slice(0, 5)
+      .forEach((l) =>
+        rows.push([l.name, l.platform, String(l.intent)])
+      );
+
+    const csv = rows.map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -215,9 +237,26 @@ const DashboardOverview = () => {
     a.click();
   };
 
-  /* ================= UI (UNCHANGED) ================= */
+  /* ================= EXPORT PDF ================= */
+  const exportPDF = async () => {
+    if (!dashboardRef.current) return;
+
+    const canvas = await html2canvas(dashboardRef.current, { scale: 2 });
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF("p", "mm", "a4");
+
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`dashboard-${range}.pdf`);
+  };
+
+  const minutesAgo = (m: number) => `${m} min ago`;
+
+  /* ================= UI ================= */
   return (
-    <div className="p-8 space-y-8 bg-background">
+    <div ref={dashboardRef} className="p-8 space-y-8 bg-background">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -226,6 +265,7 @@ const DashboardOverview = () => {
             Real-time analytics and performance metrics
           </p>
         </div>
+
         <div className="flex gap-3">
           <Select value={range} onValueChange={(v) => setRange(v as any)}>
             <SelectTrigger className="w-32 bg-card">
@@ -238,10 +278,17 @@ const DashboardOverview = () => {
               <SelectItem value="custom">Custom</SelectItem>
             </SelectContent>
           </Select>
-          <Button className="bg-primary text-primary-foreground" onClick={exportReport}>
-            <Activity className="mr-2 h-4 w-4" />
-            Export Report
-          </Button>
+
+          <Select onValueChange={(v) => (v === "csv" ? exportCSV() : exportPDF())}>
+            <SelectTrigger className="w-40 bg-primary text-primary-foreground">
+              <Download className="mr-2 h-4 w-4" />
+              <SelectValue placeholder="Export" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="csv">Export CSV</SelectItem>
+              <SelectItem value="pdf">Export PDF</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -254,7 +301,7 @@ const DashboardOverview = () => {
 
       {/* Charts Row */}
       <div className="grid md:grid-cols-2 gap-8">
-        <Card className="p-6 bg-card border-border">
+        <Card className="p-6">
           <h3 className="text-xl font-bold mb-6">Engagement & Lead Trend</h3>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={rangeData[range].engagement}>
@@ -269,7 +316,7 @@ const DashboardOverview = () => {
           </ResponsiveContainer>
         </Card>
 
-        <Card className="p-6 bg-card border-border">
+        <Card className="p-6">
           <h3 className="text-xl font-bold mb-6">Sentiment Analysis</h3>
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
@@ -285,7 +332,7 @@ const DashboardOverview = () => {
       </div>
 
       <div className="grid md:grid-cols-2 gap-8">
-        <Card className="p-6 bg-card border-border">
+        <Card className="p-6">
           <h3 className="text-xl font-bold mb-6">Platform Performance</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={platformData}>
@@ -300,16 +347,16 @@ const DashboardOverview = () => {
           </ResponsiveContainer>
         </Card>
 
-        <Card className="p-6 bg-card border-border">
+        <Card className="p-6">
           <h3 className="text-xl font-bold mb-6">Intent Score Distribution</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart
               data={[
-                { range: "0-20", count: leads.filter(l => l.intent <= 20).length },
-                { range: "21-40", count: leads.filter(l => l.intent > 20 && l.intent <= 40).length },
-                { range: "41-60", count: leads.filter(l => l.intent > 40 && l.intent <= 60).length },
-                { range: "61-80", count: leads.filter(l => l.intent > 60 && l.intent <= 80).length },
-                { range: "81-100", count: leads.filter(l => l.intent > 80).length },
+                { range: "0-20", count: leads.filter((l) => l.intent <= 20).length },
+                { range: "21-40", count: leads.filter((l) => l.intent > 20 && l.intent <= 40).length },
+                { range: "41-60", count: leads.filter((l) => l.intent > 40 && l.intent <= 60).length },
+                { range: "61-80", count: leads.filter((l) => l.intent > 60 && l.intent <= 80).length },
+                { range: "81-100", count: leads.filter((l) => l.intent > 80).length },
               ]}
             >
               <CartesianGrid strokeDasharray="3 3" />
@@ -322,7 +369,7 @@ const DashboardOverview = () => {
         </Card>
       </div>
 
-      <Card className="p-6 bg-card border-border">
+      <Card className="p-6">
         <h3 className="text-xl font-bold mb-6">Recent High-Intent Leads</h3>
         {leads
           .filter((l) => l.intent >= 80)
@@ -330,22 +377,16 @@ const DashboardOverview = () => {
           .map((a) => (
             <div
               key={a._id}
-              className="flex items-start gap-4 p-4 bg-background rounded-lg border border-border hover:border-primary/50"
+              className="flex items-start gap-4 p-4 rounded-lg border hover:border-primary/50"
             >
-              <Badge className="bg-primary text-primary-foreground">
-                {a.intent}
-              </Badge>
+              <Badge>{a.intent}</Badge>
               <div className="flex-1">
                 <div className="font-semibold">{a.name}</div>
                 <div className="text-xs text-muted-foreground">
                   via {a.platform} • {minutesAgo(5)}
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => navigate("/leads-pipeline")}
-              >
+              <Button size="sm" variant="secondary" onClick={() => navigate("/leads-pipeline")}>
                 Engage
               </Button>
             </div>
