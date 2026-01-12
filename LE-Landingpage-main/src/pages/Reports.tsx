@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { predictIntent } from "@/lib/api";
+
 import {
   Select,
   SelectContent,
@@ -17,7 +19,15 @@ type DataType = "comments" | "leads" | "replies" | "clicks";
 type ExportFormat = "csv" | "json" | "excel" | "pdf";
 
 /* ================= COMPONENT ================= */
+const handleTestAI = async () => {
+  const result = await predictIntent({
+    text: "Is this AI book good for beginners?",
+    platform: "LinkedIn",
+    client_id: "demo-client",
+  });
 
+  console.log(result);
+};
 const Reports = () => {
   /* ---------- Quick Export State ---------- */
   const [dateRange, setDateRange] = useState("7d");
